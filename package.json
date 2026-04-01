@@ -7,8 +7,10 @@
   "scripts": {
     "dev": "nodemon server/index.js",
     "start": "node server/index.js",
-    "build": "npm run build:client",
-    "build:client": "cd client/btc-quant-client && npm install && npm run build"
+    "build": "npm run build:client && npm run copy-dist",
+    "build:client": "cd client/btc-quant-client && npm install && npm run build",
+    "copy-dist": "mkdir -p client/dist && cp -r client/btc-quant-client/dist/* client/dist/ 2>/dev/null || true",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
