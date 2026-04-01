@@ -18,7 +18,7 @@ app.use(cors());
 app.use(express.json());
 
 // 静态文件（前端build）
-const distPath = path.join(__dirname, '../client/dist');
+const distPath = path.join(__dirname, '../client/btc-quant-client/dist');
 app.use(express.static(distPath));
 
 // API路由
