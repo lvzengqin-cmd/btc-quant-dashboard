@@ -1,10 +1,9 @@
 import express from 'express';
 import axios from 'axios';
 import {
-  getSetting, setSetting, getSignalHistory, getActiveSignals,
+  getSetting, setSetting, getAllSettings, getSignalHistory, getActiveSignals,
   getDailyStats, getTotalStats, getFactorPerformance,
-  getRecentLossTrades,
-  getSetting as gs, setSetting as ss
+  getRecentLossTrades
 } from './models/db.js';
 import { runSignalCheck } from './services/signalService.js';
 import { addWSClient } from './services/signalService.js';
@@ -76,16 +75,13 @@ router.get('/api/stats/loss-trades', (req, res) => {
 
 // ========== 设置 ==========
 router.get('/api/settings', (req, res) => {
-  const keys = ['webhook_long_url', 'webhook_short_url', 'confidence_threshold', 'auto_check_enabled'];
-  const settings = {};
-  keys.forEach(k => { settings[k] = gs(k) || ''; });
-  res.json(settings);
+  res.json(getAllSettings());
 });
 
 router.post('/api/settings', (req, res) => {
   const { key, value } = req.body;
   if (!key) return res.status(400).json({ error: 'key required' });
-  ss(key, String(value));
+  setSetting(key, String(value));
   res.json({ ok: true, key, value });
 });
 
