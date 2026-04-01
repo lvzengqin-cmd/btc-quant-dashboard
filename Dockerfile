@@ -1,28 +1,25 @@
-FROM node:22-alpine AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Install root deps
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm ci
 
-# Install client deps and build frontend
 COPY client/ ./client/
 RUN npm run build:client --prefix client/btc-quant-client
 
-# Install server deps
-RUN npm install --prefix . 
+COPY server/ ./server/
 
-# Production stage
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
 COPY --from=builder /app/client/btc-quant-client/dist ./client/btc-quant-client/dist
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/package-lock.json* ./
 
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci
 
 ENV NODE_ENV=production
 ENV PORT=3000
