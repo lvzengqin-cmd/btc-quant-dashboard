@@ -1,6 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import './App.css';
-const API = (import.meta as any).env?.VITE_API_URL || '';
+// 多地址自动重试 — 隧道断了自动切换
+const API_PRIMARY = (import.meta as any).env?.VITE_API_URL || '';
+const API_FALLBACKS = [
+  'https://vegpttffq746.space.minimaxi.com',
+];
+async function smartFetch(path: string, opts?: RequestInit) {
+  const urls = [API_PRIMARY, ...API_FALLBACKS].filter(Boolean);
+  for (const base of urls) {
+    try {
+      const r = await fetch(base + path, opts);
+      if (r.ok || r.status < 500) return r;
+    } catch { /* try next */ }
+  }
+  return { ok: false, json: async () => null } as Response;
+}
+const API = ''; // deprecated — use smartFetch()
 const fmt = (p: number) => p ? '$' + p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 const fmtT = (t: string) => new Date(t).toLocaleString('zh-CN', { hour12: false });
 const fmtP = (p: number) => p ? (p >= 0 ? '+' : '') + (p * 100).toFixed(2) + '%' : '—';
