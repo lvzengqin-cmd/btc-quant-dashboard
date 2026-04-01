@@ -1,18 +1,12 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "nixpacks": {
-      "plan": "nodejs",
-      "env": {
-        "NPM_CONFIG_PRODUCTION": "false"
-      }
-    }
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
     "numInstances": 1,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10,
-    "command": "cd client/btc-quant-client && npm install && npm run build && cd ../.. && node server/index.js"
+    "restartPolicyMaxRetries": 10
   }
 }

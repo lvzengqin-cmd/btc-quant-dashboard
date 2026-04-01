@@ -34,45 +34,64 @@ const POLL_INTERVAL_MS = 5000;
 
 const BINANCE_SPOT_TICKER = `wss://stream.binance.com:9443/ws/btcusdt@ticker`;
 
-function startHTTPPolling(onUpdate) {
-  if (httpPollingTimer) clearInterval(httpPollingTimer);
-  const poll = async () => {
+// 带有故障转移的HTTP请求 — 自动切换到可用节点
+async function fetchBinanceWithFailover() {
+  const maxRetries = BINANCE_BASES.length;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const base = BINANCE_BASE();
     try {
-      const resp = await axios.get(`${BINANCE_BASE()}/api/v3/ticker/24hr`, {
+      const resp = await axios.get(`${base}/api/v3/ticker/24hr`, {
         params: { symbol: SYMBOL },
         timeout: 8000,
       });
       const d = resp.data;
-      const price = parseFloat(d.lastPrice);
-      lastPrices[SYMBOL] = price;
-      if (onUpdate) onUpdate({
-        price,
+      return {
+        price: parseFloat(d.lastPrice),
         change24h: parseFloat(d.priceChangePercent),
         high24h: parseFloat(d.highPrice),
         low24h: parseFloat(d.lowPrice),
         volume24h: parseFloat(d.volume),
         open24h: parseFloat(d.openPrice),
-      });
+      };
     } catch (err) {
       const status = err.response?.status;
-      if (status === 451 || status === 403 || status === 429) {
-        console.warn(`[Binance ${BINANCE_BASE()}] 节点被封，切换中...`);
+      const blocked = status === 451 || status === 403 || status === 429;
+      if (blocked && attempt < maxRetries - 1) {
+        console.warn(`[Binance ${base}] HTTP ${status} — 切换到备用节点...`);
         nextBase();
-      } else {
-        console.error(`[Binance ${BINANCE_BASE()}] 错误: ${err.message}`);
-      }
-      // Binance全被封时用CoinGecko备用
-      try {
-        const cgResp = await axios.get(COINGECKO_URL, { timeout: 8000 });
-        const price = parseFloat(cgResp.data.bitcoin.usdt);
-        lastPrices[SYMBOL] = price;
-        if (onUpdate) onUpdate({ price, change24h: 0, high24h: 0, low24h: 0, volume24h: 0, open24h: price });
-        console.log(`[CoinGecko] 备用数据生效，价格: $${price}`);
-      } catch (cgErr) {
-        console.error('[CoinGecko] 备用也挂了:', cgErr.message);
+      } else if (!blocked) {
+        console.error(`[Binance ${base}] 请求错误: ${err.message}`);
       }
     }
+  }
+
+  // 所有Binance节点都挂了 → CoinGecko备用
+  try {
+    const cgResp = await axios.get(COINGECKO_URL, { timeout: 8000 });
+    const price = parseFloat(cgResp.data?.bitcoin?.usdt);
+    if (price > 0) {
+      console.log(`[CoinGecko] 备用数据生效，价格: $${price}`);
+      return { price, change24h: 0, high24h: 0, low24h: 0, volume24h: 0, open24h: price };
+    }
+  } catch (cgErr) {
+    console.error('[CoinGecko] 备用也挂了:', cgErr.message);
+  }
+
+  return null;
+}
+
+function startHTTPPolling(onUpdate) {
+  if (httpPollingTimer) clearInterval(httpPollingTimer);
+
+  const poll = async () => {
+    const data = await fetchBinanceWithFailover();
+    if (data) {
+      lastPrices[SYMBOL] = data.price;
+      if (onUpdate) onUpdate(data);
+    }
   };
+
   poll();
   httpPollingTimer = setInterval(poll, POLL_INTERVAL_MS);
   console.log('[Binance] 已启动HTTP轮询 (每' + POLL_INTERVAL_MS / 1000 + '秒)');

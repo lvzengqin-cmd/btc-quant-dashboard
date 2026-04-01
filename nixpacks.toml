@@ -1,0 +1,11 @@
+[phases.setup]
+npmEnabled = true
+installPhase = '''
+npm install
+npm run build
+'''
+
+[phases.run]
+startPhase = '''
+npm start
+'''
