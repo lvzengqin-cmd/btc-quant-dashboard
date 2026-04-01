@@ -3,13 +3,16 @@
   "build": {
     "builder": "NIXPACKS",
     "nixpacks": {
-      "plan": "nodejs"
+      "plan": "nodejs",
+      "env": {
+        "NPM_CONFIG_PRODUCTION": "false"
+      }
     }
   },
   "deploy": {
     "numInstances": 1,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "command": "npm run build && node server/index.js"
+    "command": "cd client/btc-quant-client && npm install && npm run build && cd ../.. && node server/index.js"
   }
 }
