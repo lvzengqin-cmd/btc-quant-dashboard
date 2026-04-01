@@ -5,8 +5,27 @@
 
 import axios from 'axios';
 
-const BINANCE_BASE = 'https://api.binance.com';
+// 多节点故障转移 - Railway IP被封锁时自动切换
+const BINANCE_BASES = [
+  'https://api.binance.com',
+  'https://api-gcp.binance.com',
+  'https://api1.binance.com',
+  'https://api2.binance.com',
+  'https://api3.binance.com',
+  'https://api4.binance.com',
+];
+let currentBaseIndex = 0;
+const BINANCE_BASE = () => BINANCE_BASES[currentBaseIndex % BINANCE_BASES.length];
 const SYMBOL = 'BTCUSDT';
+
+// 标记哪个节点可用
+function nextBase() {
+  currentBaseIndex++;
+  console.log(`[Binance] 切换到节点: ${BINANCE_BASES[currentBaseIndex % BINANCE_BASES.length]}`);
+}
+
+// CoinGecko 备用（Railway完全被封时）
+const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vscurrencies=usdt&include_24hr=true';
 
 let lastPrices = {};
 let wsConnection = null;
@@ -19,7 +38,7 @@ function startHTTPPolling(onUpdate) {
   if (httpPollingTimer) clearInterval(httpPollingTimer);
   const poll = async () => {
     try {
-      const resp = await axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, {
+      const resp = await axios.get(`${BINANCE_BASE()}/api/v3/ticker/24hr`, {
         params: { symbol: SYMBOL },
         timeout: 8000,
       });
@@ -35,7 +54,23 @@ function startHTTPPolling(onUpdate) {
         open24h: parseFloat(d.openPrice),
       });
     } catch (err) {
-      console.error('[Binance HTTP Poll] error:', err.message);
+      const status = err.response?.status;
+      if (status === 451 || status === 403 || status === 429) {
+        console.warn(`[Binance ${BINANCE_BASE()}] 节点被封，切换中...`);
+        nextBase();
+      } else {
+        console.error(`[Binance ${BINANCE_BASE()}] 错误: ${err.message}`);
+      }
+      // Binance全被封时用CoinGecko备用
+      try {
+        const cgResp = await axios.get(COINGECKO_URL, { timeout: 8000 });
+        const price = parseFloat(cgResp.data.bitcoin.usdt);
+        lastPrices[SYMBOL] = price;
+        if (onUpdate) onUpdate({ price, change24h: 0, high24h: 0, low24h: 0, volume24h: 0, open24h: price });
+        console.log(`[CoinGecko] 备用数据生效，价格: $${price}`);
+      } catch (cgErr) {
+        console.error('[CoinGecko] 备用也挂了:', cgErr.message);
+      }
     }
   };
   poll();
@@ -129,7 +164,7 @@ export async function fetchKlines(interval = '5m', limit = 200) {
   const cached = getKlineCache(SYMBOL, interval, limit);
   if (cached && cached.length >= 30) return cached.slice(-limit);
   try {
-    const resp = await axios.get(`${BINANCE_BASE}/api/v3/klines`, {
+    const resp = await axios.get(`${BINANCE_BASE()}/api/v3/klines`, {
       params: { symbol: SYMBOL, interval, limit },
       timeout: 15000,
     });
@@ -143,7 +178,7 @@ export async function fetchKlines(interval = '5m', limit = 200) {
     console.error('[Binance] fetchKlines error:', err.message);
     if (cached.length >= 30) return cached.slice(-limit);
     try {
-      const resp2 = await axios.get(`https://api.binance.com/api/v3/klines`, {
+      const resp2 = await axios.get(`${BINANCE_BASE()}/api/v3/klines`, {
         params: { symbol: SYMBOL, interval, limit },
         timeout: 12000,
       });
@@ -164,7 +199,7 @@ export async function fetchAllKlines(limit = 200) {
 
 export async function getCurrentPrice() {
   try {
-    const resp = await axios.get(`${BINANCE_BASE}/api/v3/ticker/price`, {
+    const resp = await axios.get(`${BINANCE_BASE()}/api/v3/ticker/price`, {
       params: { symbol: SYMBOL },
       timeout: 8000,
     });
@@ -175,7 +210,7 @@ export async function getCurrentPrice() {
     const cached = lastPrices[SYMBOL];
     if (cached) return cached;
     try {
-      const resp2 = await axios.get(`${BINANCE_BASE}/api/v3/ticker/24hr`, {
+      const resp2 = await axios.get(`${BINANCE_BASE()}/api/v3/ticker/24hr`, {
         params: { symbol: SYMBOL },
         timeout: 8000,
       });
@@ -188,7 +223,7 @@ export async function getCurrentPrice() {
 
 export async function getOrderBook(limit = 10) {
   try {
-    const resp = await axios.get(`${BINANCE_BASE}/api/v3/depth`, {
+    const resp = await axios.get(`${BINANCE_BASE()}/api/v3/depth`, {
       params: { symbol: SYMBOL, limit },
       timeout: 5000,
     });
